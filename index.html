@@ -507,16 +507,16 @@ async function initPyodide() {
   try {
     pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" });
     
-    // VS Code 자동 정렬을 방어하는 무적의 코드 (textwrap.dedent 사용)
+    // 백슬래시 탈출 문자 처리가 완료된 무적 코드
     await pyodide.runPythonAsync(`
 import textwrap
-code = """
 import sys, io, builtins, js
 
+code = """
 class _Buf:
     def __init__(self): self._v = []
     def write(self, s): self._v.append(str(s))
-    def getvalue(self): return ''.join(self._v)
+    def getvalue(self): return "".join(self._v)
     def clear(self): self._v = []
     def flush(self): pass
 
@@ -526,7 +526,7 @@ sys.stderr = _Buf()
 class _MockStdin:
     def readline(self):
         res = js.prompt("")
-        return (res + "\\n") if res is not None else "\\n"
+        return (res + "\\\\n") if res is not None else "\\\\n"
 
 sys.stdin = _MockStdin()
 
@@ -547,8 +547,8 @@ exec(textwrap.dedent(code))
     setTimeout(() => document.getElementById('loader').classList.add('out'), 500);
   } catch(e) {
     clearInterval(ticker);
-    // 실패 시 폰 화면에 빨간색으로 에러 원인을 띄워줌!
     msg.innerHTML = '<span style="color:#ff5a6e; font-size:11px; padding:0 20px; text-align:center; word-break:break-all;">' + String(e).replace(/</g, '&lt;') + '</span>';
+    console.error(e);
   }
 }
 
