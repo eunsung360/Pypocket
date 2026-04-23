@@ -506,7 +506,11 @@ async function initPyodide() {
   
   try {
     pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" });
+    
+    // VS Code 자동 정렬을 방어하는 무적의 코드 (textwrap.dedent 사용)
     await pyodide.runPythonAsync(`
+import textwrap
+code = """
 import sys, io, builtins, js
 
 class _Buf:
@@ -531,6 +535,8 @@ def custom_input(prompt_text=""):
     return res if res is not None else ""
 
 builtins.input = custom_input
+"""
+exec(textwrap.dedent(code))
     `);
     
     pyReady = true;
@@ -541,8 +547,8 @@ builtins.input = custom_input
     setTimeout(() => document.getElementById('loader').classList.add('out'), 500);
   } catch(e) {
     clearInterval(ticker);
-    console.error("파이썬 로딩 에러:", e); // F12에서 에러 내용 확인용
-    msg.textContent = '로딩 실패. 새로고침 해주세요.';
+    // 실패 시 폰 화면에 빨간색으로 에러 원인을 띄워줌!
+    msg.innerHTML = '<span style="color:#ff5a6e; font-size:11px; padding:0 20px; text-align:center; word-break:break-all;">' + String(e).replace(/</g, '&lt;') + '</span>';
   }
 }
 
