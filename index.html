@@ -504,7 +504,10 @@ async function initPyodide() {
     if (si < steps.length) { fill.style.width = steps[si][0] + '%'; msg.textContent = steps[si][1]; si++; }
   }, 700);
   try {
-    pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" });
+    pyodide = await loadPyodide({
+    indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/",
+    stdin: () => window.prompt("입력값을 적어주세요:") || ""
+    });
     await pyodide.runPythonAsync(`
 import sys, io
 class _Buf:
