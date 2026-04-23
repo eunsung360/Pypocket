@@ -504,20 +504,31 @@ async function initPyodide() {
     if (si < steps.length) { fill.style.width = steps[si][0] + '%'; msg.textContent = steps[si][1]; si++; }
   }, 700);
   try {
-    pyodide = await loadPyodide({
-    indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/",
-    stdin: () => window.prompt("입력값을 적어주세요:") || ""
-    });
+    pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" });
     await pyodide.runPythonAsync(`
-import sys, io
-class _Buf:
-    def __init__(self): self._v = []
-    def write(self, s): self._v.append(str(s))
-    def getvalue(self): return ''.join(self._v)
-    def clear(self): self._v = []
-    def flush(self): pass
-_out = _Buf(); _err = _Buf()
-sys.stdout = _out; sys.stderr = _err
+    import sys, io
+    import builtins
+    import js
+
+    # 출력(print) 가로채기
+    class _Buf:
+      def __init__(self): self._v = []
+      def write(self, s): self._v.append(str(s))
+      def getvalue(self): return ''.join(self._v)
+      def clear(self): self._v = []
+      def flush(self): pass
+
+    _out = _Buf(); _err = _Buf()
+    sys.stdout = _out; sys.stderr = _err
+
+    # 입력(input) 가로채기: 파이썬의 input을 브라우저 팝업으로 연결
+    def custom_input(prompt_text=""):
+    # js.prompt를 사용해 스마트폰 기본 입력창을 띄움
+    res = js.prompt(prompt_text)
+    # 취소를 누르면 빈 문자열을 반환
+    return res if res is not None else ""
+
+builtins.input = custom_input
 `);
     pyReady = true;
     clearInterval(ticker);
