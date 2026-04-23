@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pypocket-v1';
+const CACHE_NAME = 'pypocket-v2';
 const urlsToCache = [
   './',
   './index.html',
