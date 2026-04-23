@@ -1,0 +1,28 @@
+{
+  "name": "PyPocket",
+  "short_name": "PyPocket",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#111318",
+  "theme_color": "#111318",
+  "description": "Python을 언제 어디서나 주머니에서 꺼내 쓰세요. 오프라인 실행 지원.",
+  "lang": "ko-KR",
+  "dir": "ltr",
+  "orientation": "portrait-primary",
+  "id": "com.pypocket.app",
+  "scope": "./",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PyPocket</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#111318">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PyPocket">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400&family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #111318;
+  --bg2: #181b22;
+  --surface: #1e2130;
+  --surface2: #252a3a;
+  --border: #2e3347;
+  --accent: #4fffb0;
+  --accent-dim: rgba(79,255,176,0.12);
+  --accent2: #ff9f4a;
+  --accent3: #6eb5ff;
+  --text: #dde2f0;
+  --text-dim: #5a6180;
+  --danger: #ff5a6e;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Outfit', sans-serif;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+}
+
+/* ── LOADING ── */
+#loader {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 24px;
+  z-index: 200; transition: opacity 0.5s;
+}
+#loader.out { opacity: 0; pointer-events: none; }
+.loader-title {
+  font-family: var(--sans); font-weight: 900; font-size: 36px;
+  letter-spacing: -1px;
+}
+.loader-title span { color: var(--accent); }
+.loader-track {
+  width: 180px; height: 2px;
+  background: var(--border); border-radius: 2px; overflow: hidden;
+}
+.loader-fill {
+  height: 100%; background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  width: 0%; transition: width 0.4s ease; border-radius: 2px;
+}
+.loader-msg { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+
+/* ── HEADER ── */
+.header {
+  flex-shrink: 0;
+  padding: 16px 16px 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  font-family: var(--sans); font-weight: 900; font-size: 22px;
+  letter-spacing: -0.5px; display: flex; align-items: center; gap: 8px;
+}
+.logo-badge {
+  font-size: 10px; font-weight: 600; font-family: var(--mono);
+  background: var(--accent-dim); color: var(--accent);
+  border: 1px solid rgba(79,255,176,0.3);
+  padding: 2px 7px; border-radius: 20px;
+}
+.py-status {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--text-dim); text-align: right;
+}
+.py-status.ready { color: var(--accent); }
+.py-status.loading { color: var(--accent3); animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ── VIEWS ── */
+.view { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.view.hidden { display: none; }
+
+/* ── CARD LIST ── */
+.list-toolbar {
+  padding: 12px 16px;
+  display: flex; gap: 8px; align-items: center;
+  flex-shrink: 0;
+}
+.search-wrap { flex: 1; position: relative; }
+.search-input {
+  width: 100%; height: 38px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text);
+  font-family: var(--sans); font-size: 14px;
+  padding: 0 12px 0 34px; outline: none;
+}
+.search-input::placeholder { color: var(--text-dim); }
+.search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  font-size: 14px; color: var(--text-dim);
+}
+.new-card-btn {
+  height: 38px; padding: 0 16px;
+  background: var(--accent); color: #0a1a10;
+  font-family: var(--sans); font-weight: 700; font-size: 14px;
+  border: none; border-radius: 10px; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  white-space: nowrap; transition: all 0.15s;
+  flex-shrink: 0;
+}
+.new-card-btn:active { transform: scale(0.96); background: #3ae09a; }
+
+.cards-scroll {
+  flex: 1; overflow-y: auto; padding: 8px 16px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+.cards-scroll::-webkit-scrollbar { display: none; }
+
+.empty-state {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  color: var(--text-dim); text-align: center;
+  padding: 40px;
+}
+.empty-icon { font-size: 40px; }
+.empty-title { font-size: 16px; font-weight: 600; color: var(--text); }
+.empty-sub { font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+
+/* ── CARD ITEM ── */
+.card-item {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+  transition: border-color 0.2s, transform 0.15s; cursor: pointer;
+}
+.card-item:active { transform: scale(0.98); border-color: var(--accent3); }
+.card-top { padding: 14px 14px 10px; display: flex; align-items: flex-start; gap: 10px; }
+.card-color-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+.card-info { flex: 1; min-width: 0; }
+.card-name { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-meta { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+.card-actions { display: flex; gap: 4px; }
+.card-action-btn {
+  width: 30px; height: 30px; border-radius: 8px; background: transparent; border: none;
+  color: var(--text-dim); font-size: 14px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.15s;
+}
+.card-action-btn:active { background: var(--surface2); }
+.card-action-btn.del:active { color: var(--danger); }
+
+.card-preview {
+  margin: 0 14px 14px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-family: var(--mono); font-size: 11px;
+  color: var(--text-dim); line-height: 1.5; white-space: pre; overflow: hidden;
+  max-height: 54px; position: relative;
+}
+.card-preview::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 20px;
+  background: linear-gradient(transparent, var(--bg)); border-radius: 0 0 8px 8px;
+}
+
+/* ── EDITOR VIEW ── */
+.editor-header {
+  flex-shrink: 0; padding: 10px 12px; display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.back-btn {
+  width: 36px; height: 36px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-size: 16px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+}
+.back-btn:active { background: var(--surface2); }
+.card-title-input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: var(--text); font-family: var(--sans); font-weight: 700; font-size: 16px;
+}
+.card-title-input::placeholder { color: var(--text-dim); }
+
+.run-btn {
+  height: 36px; padding: 0 16px; background: var(--accent); color: #0a1a10;
+  font-family: var(--sans); font-weight: 700; font-size: 13px; border: none; border-radius: 10px;
+  cursor: pointer; display: flex; align-items: center; gap: 6px; flex-shrink: 0; transition: all 0.15s;
+}
+.run-btn:active { transform: scale(0.96); }
+.run-btn.running { background: var(--accent2); }
+.run-btn.running:active { background: #e0883a; }
+
+/* CODE AREA (Syntax Highlighting 포함) */
+.code-wrap {
+  flex: 1; overflow: hidden; position: relative; background: var(--bg);
+}
+.code-layer {
+  position: absolute; inset: 0; margin: 0; border: none;
+  padding: 14px; font-family: var(--mono); font-size: 14px; line-height: 1.7;
+  white-space: pre; tab-size: 4; overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.code-highlight {
+  background: transparent; color: var(--text); z-index: 1; pointer-events: none;
+}
+.code-textarea {
+  background: transparent; color: transparent; caret-color: var(--accent);
+  z-index: 2; resize: none; outline: none; -webkit-user-select: text; user-select: text;
+}
+/* 파이썬 구문 색상 */
+.syn-kw { color: #ff7b72; font-weight: 600; } /* 예약어 */
+.syn-str { color: #a5d6ff; } /* 문자열 */
+.syn-cmt { color: #8b949e; font-style: italic; } /* 주석 */
+.syn-func { color: #d2a8ff; } /* 함수명 */
+.syn-num { color: #79c0ff; } /* 숫자 */
+
+/* OUTPUT */
+.output-panel {
+  flex-shrink: 0; border-top: 1px solid var(--border); background: var(--bg2);
+  max-height: 35vh; overflow-y: auto; -webkit-overflow-scrolling: touch; display: none;
+}
+.output-panel.visible { display: block; }
+.output-header {
+  padding: 8px 14px; display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg2); z-index: 1;
+}
+.output-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+.output-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.output-dot.err { background: var(--danger); }
+.output-dot.running { background: var(--accent2); animation: blink 0.6s step-end infinite; }
+.output-close {
+  width: 24px; height: 24px; border-radius: 6px; background: transparent; border: none; color: var(--text-dim);
+  font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.output-close:active { background: var(--surface); }
+.output-body {
+  padding: 10px 14px 14px; font-family: var(--mono); font-size: 12px;
+  line-height: 1.7; white-space: pre-wrap; word-break: break-all; color: #b8ffd8;
+}
+.output-body.err { color: var(--danger); }
+.output-body.running { color: var(--accent2); }
+
+/* KEYBAR */
+.keybar {
+  flex-shrink: 0; background: var(--surface); border-top: 1px solid var(--border);
+  padding: 6px 10px; padding-bottom: calc(6px + var(--safe-b)); display: flex; flex-direction: column; gap: 6px;
+}
+.keybar-row { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; }
+.keybar-row::-webkit-scrollbar { display: none; }
+.key-btn {
+  height: 34px; padding: 0 12px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-family: var(--mono); font-size: 12px;
+  cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px;
+  flex-shrink: 0; transition: all 0.1s;
+}
+.key-btn:active { background: var(--border); transform: scale(0.95); }
+.key-btn.special { color: var(--accent3); border-color: rgba(110,181,255,0.3); }
+.key-btn.action { color: var(--accent); border-color: rgba(79,255,176,0.3); }
+.key-btn.copy-btn { color: var(--accent2); border-color: rgba(255,159,74,0.3); }
+
+/* MODALS */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: flex-end; justify-content: center;
+  z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.modal-overlay.show { opacity: 1; pointer-events: all; }
+.modal {
+  width: 100%; max-width: 480px; background: var(--surface); border-radius: 20px 20px 0 0;
+  border: 1px solid var(--border); border-bottom: none; padding: 20px 20px calc(20px + var(--safe-b));
+  transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+}
+.modal-overlay.show .modal { transform: translateY(0); }
+.modal-title { font-weight: 700; font-size: 17px; margin-bottom: 16px; }
+.modal-input {
+  width: 100%; height: 46px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-family: var(--sans); font-size: 15px; padding: 0 14px; outline: none; margin-bottom: 12px;
+}
+.modal-input:focus { border-color: var(--accent3); }
+.color-picks { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.color-pick {
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: all 0.15s;
+}
+.color-pick.selected { border-color: white; transform: scale(1.15); }
+.modal-btns { display: flex; gap: 8px; }
+.modal-btn {
+  flex: 1; height: 44px; border-radius: 10px; font-family: var(--sans); font-weight: 600; font-size: 14px;
+  border: none; cursor: pointer; transition: all 0.15s;
+}
+.modal-btn:active { transform: scale(0.97); }
+.modal-btn.cancel { background: var(--surface2); color: var(--text); }
+.modal-btn.confirm { background: var(--accent); color: #0a1a10; }
+
+/* TOAST */
+.toast {
+  position: fixed; bottom: calc(120px + var(--safe-b)); left: 50%; transform: translateX(-50%) translateY(10px);
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 9px 18px;
+  font-family: var(--mono); font-size: 12px; color: var(--text); opacity: 0; transition: all 0.2s; pointer-events: none;
+  z-index: 150; white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="loader-title">Py<span>Pocket</span></div>
+  <div class="loader-track"><div class="loader-fill" id="loaderFill"></div></div>
+  <div class="loader-msg" id="loaderMsg">Python 엔진 로딩중...</div>
+</div>
+
+<div class="header">
+  <div class="logo">PyPocket <span class="logo-badge">Python 3.11</span></div>
+  <div class="py-status loading" id="pyStatus">● 로딩중</div>
+</div>
+
+<div class="view" id="listView">
+  <div class="list-toolbar">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" id="searchInput" placeholder="카드 검색..." oninput="renderCards()">
+    </div>
+    <button class="new-card-btn" onclick="openNewCardModal()">＋ 새 카드</button>
+  </div>
+  <div class="cards-scroll" id="cardsScroll"></div>
+</div>
+
+<div class="view hidden" id="editorView">
+  <div class="editor-header">
+    <button class="back-btn" onclick="closeEditor()">←</button>
+    <input class="card-title-input" id="cardTitleInput" placeholder="카드 이름..." oninput="saveCurrentCard()">
+    <button class="run-btn" id="runBtn" onclick="runCode()">▶ 실행</button>
+  </div>
+
+  <div class="code-wrap">
+    <pre class="code-layer code-highlight" id="highlightLayer" aria-hidden="true"></pre>
+    <textarea class="code-layer code-textarea" id="codeTextarea"
+      placeholder="# Python 코드를 입력하세요&#10;print('Hello, PyPocket!')"
+      oninput="handleInput(this)"
+      onscroll="syncScroll(this)"
+      onkeydown="handleKeyDown(event)"></textarea>
+  </div>
+
+  <div class="output-panel" id="outputPanel">
+    <div class="output-header">
+      <div class="output-label">
+        <div class="output-dot" id="outputDot"></div>
+        <span id="outputLabel">출력</span>
+      </div>
+      <button class="output-close" onclick="closeOutput()">✕</button>
+    </div>
+    <div class="output-body" id="outputBody"></div>
+  </div>
+
+  <div class="keybar">
+    <div class="keybar-row">
+      <button class="key-btn special" onclick="insertText('    ')">⇥ tab</button>
+      <button class="key-btn special" onclick="insertText('()')">( )</button>
+      <button class="key-btn special" onclick="insertText('[]')">[  ]</button>
+      <button class="key-btn special" onclick="insertText('{}')">{  }</button>
+      <button class="key-btn special" onclick="insertText(':')">:</button>
+      <button class="key-btn special" onclick="insertText('=')">'='</button>
+      <button class="key-btn special" onclick="insertText('==')">'=='</button>
+      <button class="key-btn special" onclick="insertText('->')">'→'</button>
+      <button class="key-btn special" onclick="insertText('#')">  #</button>
+      <button class="key-btn special" onclick="insertText('&quot;&quot;')">"</button>
+      <button class="key-btn special" onclick="insertText('&#39;&#39;')">'</button>
+    </div>
+    <div class="keybar-row">
+      <button class="key-btn action" onclick="insertSnippet('print')">print()</button>
+      <button class="key-btn action" onclick="insertSnippet('for')">for</button>
+      <button class="key-btn action" onclick="insertSnippet('if')">if</button>
+      <button class="key-btn action" onclick="insertSnippet('def')">def</button>
+      <button class="key-btn action" onclick="insertSnippet('class')">class</button>
+      <button class="key-btn action" onclick="insertSnippet('import')">import</button>
+      <button class="key-btn action" onclick="insertSnippet('list')">list comp</button>
+      <button class="key-btn copy-btn" onclick="copyCode()">📋 복사</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOnBg(event, 'modalOverlay')">
+  <div class="modal">
+    <div class="modal-title">새 카드 만들기</div>
+    <input class="modal-input" id="modalNameInput" placeholder="카드 이름 (예: 정렬 알고리즘)" maxlength="40">
+    <div class="color-picks" id="colorPicks"></div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="closeModal('modalOverlay')">취소</button>
+      <button class="modal-btn confirm" onclick="createCard()">만들기</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="deleteModalOverlay" onclick="closeModalOnBg(event, 'deleteModalOverlay')">
+  <div class="modal">
+    <div class="modal-title">카드 삭제</div>
+    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 20px;">이 카드를 정말 삭제할까요? 복구할 수 없습니다.</p>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="closeModal('deleteModalOverlay')">취소</button>
+      <button class="modal-btn confirm" style="background: var(--danger); color: white;" onclick="confirmDelete()">삭제</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+<script>
+// ═══════════════════════════════
+// STATE
+// ═══════════════════════════════
+const COLORS = ['#4fffb0','#ff9f4a','#6eb5ff','#ff6e8a','#c084fc','#fbbf24','#34d399','#f87171'];
+let pyodide = null;
+let pyReady = false;
+let cards = [];
+let currentCardId = null;
+let selectedColor = COLORS[0];
+let cardToDelete = null;
+
+// ═══════════════════════════════
+// 2순위: INDEXED DB 스토리지 마이그레이션
+// ═══════════════════════════════
+const DB_NAME = 'PyPocketDB';
+let db = null;
+
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      db = e.target.result;
+      if (!db.objectStoreNames.contains('cards')) {
+        db.createObjectStore('cards', { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = (e) => { db = e.target.result; resolve(); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function loadCards() {
+  return new Promise((resolve) => {
+    const tx = db.transaction('cards', 'readonly');
+    const store = tx.objectStore('cards');
+    const req = store.getAll();
+    req.onsuccess = () => {
+      cards = req.result;
+      // localStorage에 구 버전 데이터가 있다면 마이그레이션 진행
+      if (cards.length === 0) {
+        try {
+          const local = JSON.parse(localStorage.getItem('pypocket_cards') || '[]');
+          if (local.length > 0) {
+            cards = local;
+            const txWrite = db.transaction('cards', 'readwrite');
+            const storeWrite = txWrite.objectStore('cards');
+            cards.forEach(c => storeWrite.put(c));
+          }
+        } catch(e) {}
+      }
+      cards.sort((a, b) => b.updatedAt - a.updatedAt);
+      resolve();
+    };
+  });
+}
+
+function saveCardToDB(card) {
+  if (!db) return;
+  const tx = db.transaction('cards', 'readwrite');
+  tx.objectStore('cards').put(card);
+}
+
+function deleteCardFromDB(id) {
+  if (!db) return;
+  const tx = db.transaction('cards', 'readwrite');
+  tx.objectStore('cards').delete(id);
+}
+
+function getCard(id) { return cards.find(c => c.id === id); }
+
+// ═══════════════════════════════
+// PYODIDE
+// ═══════════════════════════════
+async function initPyodide() {
+  const fill = document.getElementById('loaderFill');
+  const msg = document.getElementById('loaderMsg');
+  const steps = [
+    [15, 'Pyodide 다운로드중...'],
+    [40, 'Python 인터프리터 초기화...'],
+    [70, '표준 라이브러리 로딩...'],
+    [90, '거의 다 됐어요...'],
+  ];
+  let si = 0;
+  const ticker = setInterval(() => {
+    if (si < steps.length) { fill.style.width = steps[si][0] + '%'; msg.textContent = steps[si][1]; si++; }
+  }, 700);
+  try {
+    pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" });
+    await pyodide.runPythonAsync(`
+import sys, io
+class _Buf:
+    def __init__(self): self._v = []
+    def write(self, s): self._v.append(str(s))
+    def getvalue(self): return ''.join(self._v)
+    def clear(self): self._v = []
+    def flush(self): pass
+_out = _Buf(); _err = _Buf()
+sys.stdout = _out; sys.stderr = _err
+`);
+    pyReady = true;
+    clearInterval(ticker);
+    fill.style.width = '100%'; msg.textContent = '준비 완료!';
+    const st = document.getElementById('pyStatus');
+    st.textContent = '● 준비됨'; st.className = 'py-status ready';
+    setTimeout(() => document.getElementById('loader').classList.add('out'), 500);
+  } catch(e) {
+    clearInterval(ticker);
+    msg.textContent = '로딩 실패. 새로고침 해주세요.';
+  }
+}
+
+// ═══════════════════════════════
+// CARDS RENDER
+// ═══════════════════════════════
+function renderCards() {
+  const scroll = document.getElementById('cardsScroll');
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const filtered = cards.filter(c => c.name.toLowerCase().includes(q) || (c.code||'').toLowerCase().includes(q));
+
+  if (filtered.length === 0) {
+    scroll.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📦</div>
+        <div class="empty-title">${q ? '검색 결과 없음' : '카드가 없어요'}</div>
+        <div class="empty-sub">${q ? '다른 키워드로 검색해보세요' : '오른쪽 위 버튼으로\n첫 카드를 만들어보세요!'}</div>
+      </div>`;
+    return;
+  }
+
+  scroll.innerHTML = filtered.map(c => {
+    const preview = (c.code || '').split('\n').slice(0,3).join('\n') || '# 빈 카드';
+    const lines = (c.code || '').split('\n').length;
+    const updated = c.updatedAt ? new Date(c.updatedAt).toLocaleDateString('ko-KR', {month:'short',day:'numeric', hour:'2-digit',minute:'2-digit'}) : '방금';
+    return `
+    <div class="card-item" onclick="openCard('${c.id}')">
+      <div class="card-top">
+        <div class="card-color-dot" style="background:${c.color||COLORS[0]}"></div>
+        <div class="card-info">
+          <div class="card-name">${escHtml(c.name)}</div>
+          <div class="card-meta">${lines}줄 · ${updated}</div>
+        </div>
+        <div class="card-actions">
+          <button class="card-action-btn del" onclick="deleteCard(event,'${c.id}')">🗑</button>
+        </div>
+      </div>
+      <div class="card-preview">${escHtml(preview)}</div>
+    </div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ═══════════════════════════════
+// CARD CRUD
+// ═══════════════════════════════
+function openNewCardModal() {
+  document.getElementById('modalNameInput').value = '';
+  selectedColor = COLORS[0];
+  renderColorPicks();
+  document.getElementById('modalOverlay').classList.add('show');
+  setTimeout(() => document.getElementById('modalNameInput').focus(), 300);
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function closeModalOnBg(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
+
+function renderColorPicks() {
+  document.getElementById('colorPicks').innerHTML = COLORS.map(c => `
+    <div class="color-pick ${c===selectedColor?'selected':''}" style="background:${c}" onclick="selectColor('${c}')"></div>
+  `).join('');
+}
+function selectColor(c) { selectedColor = c; renderColorPicks(); }
+
+function createCard() {
+  const name = document.getElementById('modalNameInput').value.trim();
+  if (!name) { showToast('이름을 입력해주세요'); return; }
+  const card = {
+    id: Date.now().toString(), name, color: selectedColor, code: '', output: null,
+    createdAt: Date.now(), updatedAt: Date.now()
+  };
+  cards.unshift(card);
+  saveCardToDB(card); // 비동기 저장
+  closeModal('modalOverlay');
+  renderCards();
+  openCard(card.id);
+}
+
+// 3순위: 커스텀 모달 호출로 변경
+function deleteCard(e, id) {
+  e.stopPropagation();
+  cardToDelete = id;
+  document.getElementById('deleteModalOverlay').classList.add('show');
+}
+function confirmDelete() {
+  if (!cardToDelete) return;
+  cards = cards.filter(c => c.id !== cardToDelete);
+  deleteCardFromDB(cardToDelete);
+  renderCards();
+  showToast('카드를 삭제했어요');
+  closeModal('deleteModalOverlay');
+  cardToDelete = null;
+}
+
+// ═══════════════════════════════
+// EDITOR
+// ═══════════════════════════════
+function openCard(id) {
+  currentCardId = id;
+  const card = getCard(id);
+  if (!card) return;
+  document.getElementById('cardTitleInput').value = card.name;
+  const ta = document.getElementById('codeTextarea');
+  ta.value = card.code || '';
+  updateHighlight(ta.value); // 열때 하이라이트 적용
+  closeOutput();
+  document.getElementById('listView').classList.add('hidden');
+  document.getElementById('editorView').classList.remove('hidden');
+  setTimeout(() => ta.focus(), 100);
+}
+
+function closeEditor() {
+  document.getElementById('editorView').classList.add('hidden');
+  document.getElementById('listView').classList.remove('hidden');
+  currentCardId = null;
+  renderCards();
+}
+
+function saveCurrentCard() {
+  if (!currentCardId) return;
+  const card = getCard(currentCardId);
+  if (!card) return;
+  card.name = document.getElementById('cardTitleInput').value || '이름 없는 카드';
+  card.code = document.getElementById('codeTextarea').value;
+  card.updatedAt = Date.now();
+  saveCardToDB(card);
+}
+
+// 1순위: 에디터 입력 처리 (구문 강조 및 저장)
+function handleInput(ta) {
+  saveCurrentCard();
+  updateHighlight(ta.value);
+}
+
+function updateHighlight(text) {
+  const hl = document.getElementById('highlightLayer');
+  let html = escHtml(text);
+
+  // 주석, 문자열, 예약어, 함수명, 숫자를 한 번에 판별하는 단일 정규식
+  const regex = /(#.*)|("(?:\\"|[^"])*"|'(?:\\'|[^'])*')|\b(def|class|if|else|elif|for|while|in|return|import|from|pass|break|continue|and|or|not|True|False|None)\b|\b([a-zA-Z_]\w*)(?=\()|\b(\d+(?:\.\d+)?)\b/g;
+
+  html = html.replace(regex, (match, pCmt, pStr, pKw, pFunc, pNum) => {
+    if (pCmt) return `<span class="syn-cmt">${pCmt}</span>`;
+    if (pStr) return `<span class="syn-str">${pStr}</span>`;
+    if (pKw) return `<span class="syn-kw">${pKw}</span>`;
+    if (pFunc) return `<span class="syn-func">${pFunc}</span>`;
+    if (pNum) return `<span class="syn-num">${pNum}</span>`;
+    return match;
+  });
+
+  // textarea 마지막 줄바꿈 동기화 문제 해결
+  if (html.endsWith('\n')) html += ' ';
+  hl.innerHTML = html;
+}
+
+// 스크롤 동기화
+function syncScroll(ta) {
+  document.getElementById('highlightLayer').scrollTop = ta.scrollTop;
+  document.getElementById('highlightLayer').scrollLeft = ta.scrollLeft;
+}
+
+// ═══════════════════════════════
+// RUN CODE
+// ═══════════════════════════════
+async function runCode() {
+  if (!pyReady) { showToast('Python 아직 로딩중이에요!'); return; }
+  saveCurrentCard();
+  const code = document.getElementById('codeTextarea').value.trim();
+  if (!code) { showToast('코드를 입력하세요'); return; }
+
+  const btn = document.getElementById('runBtn');
+  btn.textContent = '⏳ 실행중'; btn.classList.add('running');
+
+  const panel = document.getElementById('outputPanel');
+  const body = document.getElementById('outputBody');
+  const dot = document.getElementById('outputDot');
+  const label = document.getElementById('outputLabel');
+
+  panel.classList.add('visible');
+  body.className = 'output-body running'; body.textContent = '실행중...';
+  dot.className = 'output-dot running'; label.textContent = '실행중';
+
+  try {
+    await pyodide.runPythonAsync('_out.clear(); _err.clear()');
+    const result = await pyodide.runPythonAsync(code);
+    const stdout = await pyodide.runPythonAsync('_out.getvalue()');
+    const stderr = await pyodide.runPythonAsync('_err.getvalue()');
+
+    let out = stdout || '';
+    if (result !== undefined && result !== null) {
+      const rs = String(result);
+      if (rs && rs !== 'None') out += (out ? '\n' : '') + rs;
+    }
+
+    if (stderr) {
+      body.className = 'output-body err'; body.textContent = stderr;
+      dot.className = 'output-dot err'; label.textContent = '오류';
+    } else {
+      body.className = 'output-body'; body.textContent = out || '(출력 없음)';
+      dot.className = 'output-dot'; label.textContent = '출력';
+    }
+  } catch(e) {
+    body.className = 'output-body err'; body.textContent = e.message || String(e);
+    dot.className = 'output-dot err'; label.textContent = '오류';
+  }
+
+  btn.textContent = '▶ 실행'; btn.classList.remove('running');
+}
+
+function closeOutput() { document.getElementById('outputPanel').classList.remove('visible'); }
+
+// ═══════════════════════════════
+// KEY HELPERS (자동 들여쓰기 추가)
+// ═══════════════════════════════
+function handleKeyDown(e) {
+  const ta = e.target;
+  const s = ta.selectionStart;
+  const val = ta.value;
+
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    insertText('    ');
+  } 
+  // 자동 들여쓰기 로직
+  else if (e.key === 'Enter') {
+    const beforeCursor = val.slice(0, s);
+    const lines = beforeCursor.split('\n');
+    const lastLine = lines[lines.length - 1];
+    
+    let indentMatch = lastLine.match(/^\s*/);
+    let indent = indentMatch ? indentMatch[0] : '';
+    
+    if (lastLine.trim().endsWith(':')) indent += '    ';
+
+    if (indent.length > 0) {
+      e.preventDefault();
+      insertText('\n' + indent);
+    }
+  }
+  // 스마트 괄호/따옴표 자동 완성 (키보드 타이핑 감지)
+  else if (['(', '[', '{', '"', "'"].includes(e.key)) {
+    e.preventDefault();
+    const pairMap = { '(':'()', '[':'[]', '{':'{}', '"':'""', "'":"''" };
+    insertText(pairMap[e.key]);
+  }
+  // 닫는 괄호/따옴표 스킵 (이미 뒤에 닫는 기호가 있는데 또 입력한 경우)
+  else if ([')', ']', '}', '"', "'"].includes(e.key)) {
+    if (val[s] === e.key) {
+      e.preventDefault();
+      ta.selectionStart = ta.selectionEnd = s + 1;
+    }
+  }
+}
+
+function insertText(text) {
+  const ta = document.getElementById('codeTextarea');
+  const s = ta.selectionStart, end = ta.selectionEnd;
+  const val = ta.value;
+
+  // 따옴표 페어("")와 ('') 추가
+  const pairs = { '()':'()', '[]':'[]', '{}':'{}', '""':'""', "''":"''" };
+  
+  if (pairs[text]) {
+    const before = val.slice(0, s), after = val.slice(end);
+    const [l, r] = [text[0], text[1]];
+    ta.value = before + l + r + after;
+    // 커서를 쌍 사이로 이동
+    ta.selectionStart = ta.selectionEnd = s + 1;
+  } else {
+    ta.value = val.slice(0, s) + text + val.slice(end);
+    ta.selectionStart = ta.selectionEnd = s + text.length;
+  }
+  
+  handleInput(ta); // 구문 강조 및 저장 업데이트
+  ta.focus();
+}
+
+const SNIPPETS = {
+  print: 'print()',
+  for:   'for i in range(10):\n    print(i)',
+  if:    'if condition:\n    pass\nelse:\n    pass',
+  def:   'def function_name(arg):\n    """설명"""\n    return arg',
+  class: 'class MyClass:\n    def __init__(self):\n        pass\n    \n    def method(self):\n        pass',
+  import:'import ',
+  list:  '[x for x in range(10)]',
+};
+
+function insertSnippet(key) {
+  const ta = document.getElementById('codeTextarea');
+  const s = ta.selectionStart;
+  const val = ta.value;
+  const snippet = SNIPPETS[key] || '';
+  ta.value = val.slice(0, s) + snippet + val.slice(s);
+  
+  if (key === 'print') ta.selectionStart = ta.selectionEnd = s + 6;
+  else if (key === 'import') ta.selectionStart = ta.selectionEnd = s + snippet.length;
+  else ta.selectionStart = ta.selectionEnd = s + snippet.length;
+  
+  handleInput(ta);
+  ta.focus();
+}
+
+// ═══════════════════════════════
+// COPY
+// ═══════════════════════════════
+async function copyCode() {
+  const code = document.getElementById('codeTextarea').value;
+  if (!code.trim()) { showToast('복사할 코드가 없어요'); return; }
+  try {
+    await navigator.clipboard.writeText(code);
+    showToast('✅ 복사 완료!');
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = code; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('✅ 복사 완료!');
+  }
+}
+
+// ═══════════════════════════════
+// TOAST
+// ═══════════════════════════════
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ═══════════════════════════════
+// INIT APP
+// ═══════════════════════════════
+async function initApp() {
+  await initDB();
+  await loadCards();
+  renderCards();
+  renderColorPicks();
+  initPyodide(); // Pyodide는 병렬로 로드
+}
+
+initApp();
+</script>
+</body>
+</html>
