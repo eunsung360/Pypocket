@@ -520,8 +520,10 @@ class _Buf:
     def clear(self): self._v = []
     def flush(self): pass
 
-sys.stdout = _Buf()
-sys.stderr = _Buf()
+_out = _Buf()
+_err = _Buf()
+sys.stdout = _out
+sys.stderr = _err
 
 class _MockStdin:
     def readline(self):
