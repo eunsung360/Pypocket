@@ -386,6 +386,7 @@ body {
       <button class="key-btn action" onclick="insertSnippet('import')">import</button>
       <button class="key-btn action" onclick="insertSnippet('list')">list comp</button>
       <button class="key-btn copy-btn" onclick="copyCode()">📋 복사</button>
+      <button class="key-btn special" onclick="askChatGPT()" style="color: #c084fc; border-color: rgba(192,132,252,0.3);">💬 질문</button>
     </div>
   </div>
 </div>
@@ -413,6 +414,18 @@ body {
   </div>
 </div>
 
+<div class="modal-overlay" id="chatModalOverlay" onclick="closeModalOnBg(event, 'chatModalOverlay')">
+  <div class="modal" style="max-height: 85vh; display: flex; flex-direction: column;">
+    <div class="modal-title">ChatGPT 코드 질문</div>
+    <textarea class="modal-input" id="chatQuestionInput" placeholder="현재 코드에 대해 궁금한 점을 물어보세요" style="height: 60px; resize: none; padding-top: 12px; font-family: var(--sans);"></textarea>
+    <div id="chatResultArea" style="flex: 1; overflow-y: auto; margin-bottom: 12px; font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--text); display: none; white-space: pre-wrap; background: var(--bg); padding: 12px; border-radius: 10px; border: 1px solid var(--border);"></div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="closeModal('chatModalOverlay')">닫기</button>
+      <button class="modal-btn confirm" id="chatSubmitBtn" onclick="submitChat()" style="background: #c084fc; color: #fff;">물어보기</button>
+    </div>
+  </div>
+</div>
+  
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
@@ -904,6 +917,95 @@ async function initApp() {
   initPyodide(); // Pyodide는 병렬로 로드
 }
 
+// ═══════════════════════════════
+// CHATGPT 연동
+// ═══════════════════════════════
+function getOpenAIKey() {
+  const storageKey = 'pypocket_openai_key';
+  let apiKey = localStorage.getItem(storageKey);
+  if (!apiKey) {
+    apiKey = prompt('OpenAI API 키를 입력하세요 (최초 1회만 저장됩니다):');
+    if (apiKey) localStorage.setItem(storageKey, apiKey);
+  }
+  return apiKey;
+}
+
+function askChatGPT() {
+  const code = document.getElementById('codeTextarea').value.trim();
+  if (!code) {
+    showToast('질문할 코드가 없습니다.');
+    return;
+  }
+  
+  const apiKey = getOpenAIKey();
+  if (!apiKey) {
+    showToast('API 키가 필요합니다.');
+    return;
+  }
+
+  // 모달 초기화 및 열기
+  document.getElementById('chatQuestionInput').value = '';
+  document.getElementById('chatResultArea').style.display = 'none';
+  document.getElementById('chatResultArea').innerText = '';
+  document.getElementById('chatSubmitBtn').textContent = '물어보기';
+  document.getElementById('chatSubmitBtn').disabled = false;
+  
+  document.getElementById('chatModalOverlay').classList.add('show');
+  setTimeout(() => document.getElementById('chatQuestionInput').focus(), 300);
+}
+
+async function submitChat() {
+  const apiKey = localStorage.getItem('pypocket_openai_key');
+  const question = document.getElementById('chatQuestionInput').value.trim();
+  const code = document.getElementById('codeTextarea').value.trim();
+  
+  if (!question) {
+    showToast('질문을 입력해주세요.');
+    return;
+  }
+
+  const resultArea = document.getElementById('chatResultArea');
+  const submitBtn = document.getElementById('chatSubmitBtn');
+  
+  resultArea.style.display = 'block';
+  resultArea.innerText = '답변을 생성하는 중입니다...';
+  submitBtn.textContent = '답변 중...';
+  submitBtn.disabled = true;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: '당신은 파이썬 코드를 분석하고 질문에 간결하고 정확하게 답하는 어시스턴트입니다.' },
+          { role: 'user', content: '[코드]\n' + code + '\n\n[질문]\n' + question }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem('pypocket_openai_key');
+        throw new Error('API 키가 유효하지 않습니다. 창을 닫고 다시 시도하여 키를 재입력하세요.');
+      }
+      throw new Error('API 요청 실패 (코드: ' + response.status + ')');
+    }
+
+    const data = await response.json();
+    resultArea.innerText = data.choices[0].message.content;
+  } catch (error) {
+    resultArea.innerText = '오류 발생: ' + error.message;
+  } finally {
+    submitBtn.textContent = '다시 묻기';
+    submitBtn.disabled = false;
+  }
+}
+  
 initApp();
 </script>
 </body>
