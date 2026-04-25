@@ -419,6 +419,7 @@ body {
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
       <div style="font-weight: 600; color: var(--accent);">💬 AI 어시스턴트</div>
       <div style="display: flex; gap: 8px;">
+        <button onclick="showChatHistory()" style="background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;">📜 기록</button>
         <button onclick="minimizeChat()" style="background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;">🔽 내리기</button>
         <button onclick="closeChat()" style="background: rgba(255,100,100,0.1); color: #ff6b6b; border: 1px solid rgba(255,100,100,0.3); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;">❌ 닫기(초기화)</button>
       </div>
@@ -434,7 +435,17 @@ body {
     </div>
   </div>
 </div>
-  
+
+<div class="modal-overlay" id="chatHistoryModalOverlay">
+  <div class="modal" style="max-height: 85vh; width: 90%; max-width: 500px; display: flex; flex-direction: column; padding: 15px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+      <div style="font-weight: 600; color: var(--accent);">📜 이전 대화 기록</div>
+      <button onclick="closeChatHistory()" style="background: rgba(255,100,100,0.1); color: #ff6b6b; border: 1px solid rgba(255,100,100,0.3); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;">❌ 닫기</button>
+    </div>
+    <div id="chatHistoryListArea" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 10px 0; font-family: var(--sans); font-size: 13px; line-height: 1.5;">
+        </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
@@ -953,21 +964,24 @@ function minimizeChat() {
 }
 
 function closeChat() {
-  // 닫기: 현재 대화 세션을 localStorage에 저장하고 화면을 아예 초기화
-  if (currentChatHistory.length > 0) {
-    let sessions = JSON.parse(localStorage.getItem('pypocket_chat_sessions') || '[]');
-    // 날짜 시간과 함께 세션 저장
-    sessions.unshift({ timestamp: new Date().toISOString(), history: currentChatHistory });
-    if (sessions.length > 10) sessions.pop(); // 최대 10개까지만 유지
-    localStorage.setItem('pypocket_chat_sessions', JSON.stringify(sessions));
+  // 대화 내용이 하나도 없으면 바로 창만 닫고 종료 (저장 및 알림 표시 안 함)
+  if (currentChatHistory.length === 0) {
+    document.getElementById('chatModalOverlay').classList.remove('show');
+    return;
   }
 
-  // 화면 및 컨텍스트 완전 초기화
+  // 대화 내용이 있으면 저장 로직 수행
+  let sessions = JSON.parse(localStorage.getItem('pypocket_chat_sessions') || '[]');
+  sessions.unshift({ timestamp: new Date().getTime(), history: currentChatHistory });
+  if (sessions.length > 5) sessions.pop(); // 세션 히스토리 최대 5개 유지
+  localStorage.setItem('pypocket_chat_sessions', JSON.stringify(sessions));
+
+  // 화면 및 컨텍스트 초기화
   currentChatHistory = []; 
   document.getElementById('chatResultArea').innerHTML = '<div style="text-align: center; color: #888; font-size: 12px;">현재 에디터에 작성된 코드를 기반으로 대화가 시작됩니다.</div>';
   document.getElementById('chatQuestionInput').value = '';
   document.getElementById('chatModalOverlay').classList.remove('show');
-  showToast('대화가 종료되고 저장되었습니다.');
+  showToast('대화가 종료되고 기록에 저장되었습니다.');
 }
 
 function appendMessage(role, text) {
@@ -1069,6 +1083,87 @@ async function submitChat() {
     submitBtn.disabled = false;
     setTimeout(() => inputEl.focus(), 100);
   }
+}
+
+function showChatHistory() {
+  const listArea = document.getElementById('chatHistoryListArea');
+  listArea.innerHTML = ''; 
+  
+  let sessions = JSON.parse(localStorage.getItem('pypocket_chat_sessions') || '[]');
+  
+  if (sessions.length === 0) {
+    listArea.innerHTML = '<div style="text-align: center; color: #888; margin-top: 20px;">저장된 대화 기록이 없습니다.</div>';
+  } else {
+    sessions.forEach((session) => {
+      // 날짜 포맷 변환
+      const dateStr = new Date(session.timestamp).toLocaleString();
+      // 첫 번째 유저 질문을 해당 세션의 제목으로 사용
+      const firstUserMsg = session.history.find(h => h.role === 'user');
+      const title = firstUserMsg ? firstUserMsg.parts[0].text : '대화 내역';
+      
+      const itemDiv = document.createElement('div');
+      itemDiv.style.background = 'var(--surface2)';
+      itemDiv.style.border = '1px solid var(--border)';
+      itemDiv.style.borderRadius = '8px';
+      itemDiv.style.padding = '10px';
+      itemDiv.style.cursor = 'pointer';
+      
+      itemDiv.innerHTML = `
+        <div style="font-size: 11px; color: #888; margin-bottom: 5px;">${dateStr}</div>
+        <div style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text);">Q: ${title}</div>
+      `;
+      
+      // 항목 클릭 시 상세 대화 펼치기/접기
+      itemDiv.onclick = () => {
+        let existingContent = itemDiv.querySelector('.history-content');
+        if (existingContent) {
+          existingContent.remove();
+          return;
+        }
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'history-content';
+        contentDiv.style.marginTop = '10px';
+        contentDiv.style.paddingTop = '10px';
+        contentDiv.style.borderTop = '1px solid var(--border)';
+        contentDiv.style.display = 'flex';
+        contentDiv.style.flexDirection = 'column';
+        contentDiv.style.gap = '8px';
+        
+        session.history.forEach(msg => {
+          const msgDiv = document.createElement('div');
+          msgDiv.style.fontSize = '12px';
+          msgDiv.style.padding = '8px 12px';
+          msgDiv.style.borderRadius = '12px';
+          msgDiv.style.whiteSpace = 'pre-wrap';
+          
+          if (msg.role === 'user') {
+            msgDiv.style.alignSelf = 'flex-end';
+            msgDiv.style.background = 'rgba(192, 132, 252, 0.2)'; 
+            msgDiv.style.color = '#c084fc';
+            msgDiv.style.borderRadius = '12px 12px 0 12px';
+          } else {
+            msgDiv.style.alignSelf = 'flex-start';
+            msgDiv.style.background = 'var(--bg)';
+            msgDiv.style.color = 'var(--text)';
+            msgDiv.style.border = '1px solid var(--border)';
+            msgDiv.style.borderRadius = '12px 12px 12px 0';
+          }
+          msgDiv.textContent = msg.parts[0].text;
+          contentDiv.appendChild(msgDiv);
+        });
+        itemDiv.appendChild(contentDiv);
+      };
+      
+      listArea.appendChild(itemDiv);
+    });
+  }
+  
+  document.getElementById('chatHistoryModalOverlay').classList.add('show');
+}
+
+function closeChatHistory() {
+  document.getElementById('chatHistoryModalOverlay').classList.remove('show');
 }
 
 
