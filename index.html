@@ -414,14 +414,23 @@ body {
   </div>
 </div>
 
-<div class="modal-overlay" id="chatModalOverlay" onclick="closeModalOnBg(event, 'chatModalOverlay')">
-  <div class="modal" style="max-height: 85vh; display: flex; flex-direction: column;">
-    <div class="modal-title">Gemini 코드 질문</div>
-    <textarea class="modal-input" id="chatQuestionInput" placeholder="현재 코드에 대해 궁금한 점을 물어보세요" style="height: 60px; resize: none; padding-top: 12px; font-family: var(--sans);"></textarea>
-    <div id="chatResultArea" style="flex: 1; overflow-y: auto; margin-bottom: 12px; font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--text); display: none; white-space: pre-wrap; background: var(--bg); padding: 12px; border-radius: 10px; border: 1px solid var(--border);"></div>
-    <div class="modal-btns">
-      <button class="modal-btn cancel" onclick="closeModal('chatModalOverlay')">닫기</button>
-      <button class="modal-btn confirm" id="chatSubmitBtn" onclick="submitChat()" style="background: #c084fc; color: #fff;">물어보기</button>
+<div class="modal-overlay" id="chatModalOverlay">
+  <div class="modal" style="max-height: 85vh; width: 90%; max-width: 500px; display: flex; flex-direction: column; padding: 15px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+      <div style="font-weight: 600; color: var(--accent);">💬 AI 어시스턴트</div>
+      <div style="display: flex; gap: 8px;">
+        <button onclick="minimizeChat()" style="background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;">🔽 내리기</button>
+        <button onclick="closeChat()" style="background: rgba(255,100,100,0.1); color: #ff6b6b; border: 1px solid rgba(255,100,100,0.3); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;">❌ 닫기(초기화)</button>
+      </div>
+    </div>
+
+    <div id="chatResultArea" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 10px 0; margin-bottom: 10px; font-family: var(--sans); font-size: 13px; line-height: 1.5;">
+        <div style="text-align: center; color: #888; font-size: 12px;">현재 에디터에 작성된 코드를 기반으로 대화가 시작됩니다.</div>
+    </div>
+
+    <div style="display: flex; gap: 8px;">
+      <textarea id="chatQuestionInput" placeholder="코드에 대해 물어보세요..." style="flex: 1; height: 44px; resize: none; padding: 10px; font-family: var(--sans); border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text);" onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); submitChat(); }"></textarea>
+      <button id="chatSubmitBtn" onclick="submitChat()" style="background: #c084fc; color: #fff; border: none; border-radius: 8px; padding: 0 16px; font-weight: 600; cursor: pointer; white-space: nowrap;">전송</button>
     </div>
   </div>
 </div>
@@ -918,96 +927,151 @@ async function initApp() {
 }
 
 // ═══════════════════════════════
-// GEMINI 연동
+// GEMINI 연동 (대화형 채팅)
 // ═══════════════════════════════
+let currentChatHistory = []; // 현재 대화 세션 컨텍스트 유지 배열
+
 function getGeminiKey() {
   const storageKey = 'pypocket_gemini_key';
   let apiKey = localStorage.getItem(storageKey);
   if (!apiKey) {
-    apiKey = prompt('Gemini API 키를 입력하세요 (Google AI Studio에서 무료 발급 가능. 최초 1회만 저장됩니다):');
+    apiKey = prompt('Gemini API 키를 입력하세요 (최초 1회만 저장됩니다):');
     if (apiKey) localStorage.setItem(storageKey, apiKey);
   }
   return apiKey;
 }
 
 function askGemini() {
-  const code = document.getElementById('codeTextarea').value.trim();
-  if (!code) {
-    showToast('질문할 코드가 없습니다.');
-    return;
-  }
-  
-  const apiKey = getGeminiKey();
-  if (!apiKey) {
-    showToast('API 키가 필요합니다.');
-    return;
-  }
-
-  // 모달 초기화 및 열기
-  document.getElementById('chatQuestionInput').value = '';
-  document.getElementById('chatResultArea').style.display = 'none';
-  document.getElementById('chatResultArea').innerText = '';
-  document.getElementById('chatSubmitBtn').textContent = '물어보기';
-  document.getElementById('chatSubmitBtn').disabled = false;
-  
+  // 메인 화면에서 '질문' 버튼을 누르면 모달 열기 (내렸던 채팅이 있으면 그대로 복구됨)
   document.getElementById('chatModalOverlay').classList.add('show');
   setTimeout(() => document.getElementById('chatQuestionInput').focus(), 300);
 }
 
-async function submitChat() {
-  const apiKey = localStorage.getItem('pypocket_gemini_key');
-  const question = document.getElementById('chatQuestionInput').value.trim();
-  const code = document.getElementById('codeTextarea').value.trim();
-  
-  if (!question) {
-    showToast('질문을 입력해주세요.');
-    return;
+function minimizeChat() {
+  // 내리기: 모달만 숨기고 대화 기록(currentChatHistory)은 그대로 유지함
+  document.getElementById('chatModalOverlay').classList.remove('show');
+}
+
+function closeChat() {
+  // 닫기: 현재 대화 세션을 localStorage에 저장하고 화면을 아예 초기화
+  if (currentChatHistory.length > 0) {
+    let sessions = JSON.parse(localStorage.getItem('pypocket_chat_sessions') || '[]');
+    // 날짜 시간과 함께 세션 저장
+    sessions.unshift({ timestamp: new Date().toISOString(), history: currentChatHistory });
+    if (sessions.length > 10) sessions.pop(); // 최대 10개까지만 유지
+    localStorage.setItem('pypocket_chat_sessions', JSON.stringify(sessions));
   }
 
-  const resultArea = document.getElementById('chatResultArea');
-  const submitBtn = document.getElementById('chatSubmitBtn');
-  
-  resultArea.style.display = 'block';
-  resultArea.innerText = '답변을 생성하는 중입니다...';
-  submitBtn.textContent = '답변 중...';
-  submitBtn.disabled = true;
+  // 화면 및 컨텍스트 완전 초기화
+  currentChatHistory = []; 
+  document.getElementById('chatResultArea').innerHTML = '<div style="text-align: center; color: #888; font-size: 12px;">현재 에디터에 작성된 코드를 기반으로 대화가 시작됩니다.</div>';
+  document.getElementById('chatQuestionInput').value = '';
+  document.getElementById('chatModalOverlay').classList.remove('show');
+  showToast('대화가 종료되고 저장되었습니다.');
+}
 
-  // Gemini 프롬프트 구성
-  const promptText = `당신은 파이썬 코드를 분석하고 질문에 간결하고 정확하게 답하는 어시스턴트입니다.\n\n[코드]\n${code}\n\n[질문]\n${question}`;
+function appendMessage(role, text) {
+  const chatArea = document.getElementById('chatResultArea');
+  const msgDiv = document.createElement('div');
+  
+  if (role === 'user') {
+    // 내가 보낸 메시지 (오른쪽 정렬, 보라색)
+    msgDiv.style.alignSelf = 'flex-end';
+    msgDiv.style.background = '#c084fc';
+    msgDiv.style.color = '#fff';
+    msgDiv.style.padding = '8px 12px';
+    msgDiv.style.borderRadius = '12px 12px 0 12px';
+    msgDiv.style.maxWidth = '85%';
+    msgDiv.style.whiteSpace = 'pre-wrap';
+  } else {
+    // AI가 보낸 메시지 (왼쪽 정렬, 어두운 회색)
+    msgDiv.style.alignSelf = 'flex-start';
+    msgDiv.style.background = 'var(--surface2)';
+    msgDiv.style.color = 'var(--text)';
+    msgDiv.style.padding = '10px 14px';
+    msgDiv.style.borderRadius = '12px 12px 12px 0';
+    msgDiv.style.maxWidth = '90%';
+    msgDiv.style.whiteSpace = 'pre-wrap';
+    msgDiv.style.border = '1px solid var(--border)';
+  }
+  
+  msgDiv.textContent = text;
+  chatArea.appendChild(msgDiv);
+  chatArea.scrollTop = chatArea.scrollHeight; // 메시지 추가 후 맨 아래로 스크롤
+}
+
+async function submitChat() {
+  const apiKey = getGeminiKey();
+  if (!apiKey) return;
+
+  const inputEl = document.getElementById('chatQuestionInput');
+  const question = inputEl.value.trim();
+  if (!question) return;
+
+  const currentCode = document.getElementById('codeTextarea').value.trim();
+  const submitBtn = document.getElementById('chatSubmitBtn');
+
+  // 1. 내 질문 화면에 띄우고 입력창 비우기
+  inputEl.value = '';
+  appendMessage('user', question);
+  
+  // 2. 대화 기록 배열에 내 질문 추가
+  currentChatHistory.push({ role: 'user', parts: [{ text: question }] });
+
+  // 3. 로딩 상태 표시
+  const loadingDiv = document.createElement('div');
+  loadingDiv.id = 'chatLoading';
+  loadingDiv.style.alignSelf = 'flex-start';
+  loadingDiv.style.color = '#888';
+  loadingDiv.style.fontSize = '12px';
+  loadingDiv.style.padding = '0 5px';
+  loadingDiv.textContent = '답변 작성 중...';
+  document.getElementById('chatResultArea').appendChild(loadingDiv);
+  document.getElementById('chatResultArea').scrollTop = document.getElementById('chatResultArea').scrollHeight;
+  
+  submitBtn.disabled = true;
 
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [{ text: promptText }]
-        }]
+        // systemInstruction으로 현재 에디터의 코드를 모델에게 백그라운드로 인식시킴
+        systemInstruction: {
+          parts: [{ text: "당신은 파이썬 코드를 분석하고 코딩을 도와주는 친절한 어시스턴트입니다.\n[현재 작성된 코드 상태]\n" + currentCode }]
+        },
+        contents: currentChatHistory // 누적된 대화 기록을 함께 전송
       })
     });
 
     const data = await response.json();
+    document.getElementById('chatLoading')?.remove();
 
     if (!response.ok) {
       if (data.error && data.error.message.includes('API key not valid')) {
         localStorage.removeItem('pypocket_gemini_key');
-        throw new Error('API 키가 유효하지 않습니다. 창을 닫고 다시 시도하여 키를 재입력하세요.');
+        throw new Error('API 키가 유효하지 않습니다. 창을 닫고 다시 시도하세요.');
       }
       throw new Error(data.error?.message || 'API 요청 실패');
     }
 
-    // Gemini API 응답 구조에서 텍스트 추출
     const answer = data.candidates[0].content.parts[0].text;
-    resultArea.innerText = answer;
+    
+    // 4. AI 답변 화면에 띄우고 대화 기록 배열에 추가
+    appendMessage('model', answer);
+    currentChatHistory.push({ role: 'model', parts: [{ text: answer }] });
+
   } catch (error) {
-    resultArea.innerText = '오류 발생: ' + error.message;
+    document.getElementById('chatLoading')?.remove();
+    appendMessage('model', '오류 발생: ' + error.message);
+    currentChatHistory.pop(); // 오류 났을 땐 방금 넣은 내 질문을 배열에서 롤백 (다시 전송할 수 있도록)
   } finally {
-    submitBtn.textContent = '다시 묻기';
     submitBtn.disabled = false;
+    setTimeout(() => inputEl.focus(), 100);
   }
 }
+
+
   
 initApp();
 </script>
